@@ -1,0 +1,8 @@
+torch==2.5.1
+chess==1.11.2
+numpy==2.4.4
+pandas==3.0.2
+zstandard==0.25.0
+streamlit==1.57.0
+wandb==0.26.1
+pytest==9.0.3

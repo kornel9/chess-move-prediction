@@ -1,0 +1,115 @@
+"""PyTorch ``Dataset`` classes for chess next-move prediction."""
+from __future__ import annotations
+
+from typing import Sequence
+
+import chess
+import torch
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
+
+from src.data.board_encoder import encode_board
+from src.data.vocab import Vocab
+
+DEFAULT_HISTORY_LEN: int = 64
+
+
+class ChessMoveDataset(Dataset):
+    """One sample per ply across all games.
+
+    Each sample is a triple ``(move_history, board, target_move_id)``:
+        - ``move_history``: ``LongTensor`` of shape ``(history_len,)`` containing
+          the last ``history_len`` token ids of ``[<START>, move_0, ..., move_{i-1}]``,
+          left-padded with ``<PAD>`` if shorter.
+        - ``board``: ``FloatTensor`` of shape ``(18, 8, 8)`` from
+          :func:`src.data.board_encoder.encode_board`, computed at the position
+          before move ``i`` is played.
+        - ``target_move_id``: scalar ``LongTensor`` with the vocab id of move ``i``.
+    """
+
+    def __init__(
+        self,
+        games: Sequence[Sequence[str]],
+        vocab: Vocab,
+        history_len: int = DEFAULT_HISTORY_LEN,
+    ) -> None:
+        if history_len <= 0:
+            raise ValueError(f"history_len must be positive, got {history_len}")
+        self.games: list[list[str]] = [list(g) for g in games]
+        self.vocab = vocab
+        self.history_len = history_len
+        self.index: list[tuple[int, int]] = [
+            (g_idx, p_idx)
+            for g_idx, game in enumerate(self.games)
+            for p_idx in range(len(game))
+        ]
+
+    def __len__(self) -> int:
+        return len(self.index)
+
+    def __getitem__(
+        self, idx: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        game_idx, ply_idx = self.index[idx]
+        game = self.games[game_idx]
+
+        history_tokens = [self.vocab.start_id]
+        history_tokens.extend(self.vocab.encode(m) for m in game[:ply_idx])
+        if len(history_tokens) >= self.history_len:
+            history_tokens = history_tokens[-self.history_len:]
+        else:
+            pad = [self.vocab.pad_id] * (self.history_len - len(history_tokens))
+            history_tokens = pad + history_tokens
+
+        board = chess.Board()
+        for move in game[:ply_idx]:
+            board.push_uci(move)
+
+        history_tensor = torch.tensor(history_tokens, dtype=torch.long)
+        board_tensor = torch.from_numpy(encode_board(board))
+        target_id = torch.tensor(self.vocab.encode(game[ply_idx]), dtype=torch.long)
+
+        return history_tensor, board_tensor, target_id
+
+
+class ChessMoveSequenceDataset(Dataset):
+    """One sample per game for sequence-level LSTM training.
+
+    Each sample is a pair ``(input_ids, target_ids)`` of equal length ``N+1``,
+    where ``N`` is the number of plies in the game:
+
+        - ``input_ids``  = ``[<START>, m_0, m_1, ..., m_{N-1}]``
+        - ``target_ids`` = ``[m_0,    m_1, ..., m_{N-1}, <END>]``
+
+    Sequences are *not* padded inside the dataset; use :func:`pad_collate` as
+    the ``DataLoader`` ``collate_fn`` to right-pad a batch to its longest
+    sequence with ``<PAD>``. The training loss should use
+    ``CrossEntropyLoss(ignore_index=pad_id)`` so padded positions contribute
+    nothing.
+    """
+
+    def __init__(self, games: Sequence[Sequence[str]], vocab: Vocab) -> None:
+        self.games: list[list[str]] = [list(g) for g in games]
+        self.vocab = vocab
+
+    def __len__(self) -> int:
+        return len(self.games)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        game = self.games[idx]
+        encoded = [self.vocab.encode(m) for m in game]
+        input_ids = torch.tensor([self.vocab.start_id, *encoded], dtype=torch.long)
+        target_ids = torch.tensor([*encoded, self.vocab.end_id], dtype=torch.long)
+        return input_ids, target_ids
+
+
+def pad_collate(
+    batch: Sequence[tuple[torch.Tensor, torch.Tensor]],
+    pad_id: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Right-pad a batch of ``(input_ids, target_ids)`` pairs to the batch's
+    longest sequence using ``pad_id``."""
+    inputs, targets = zip(*batch)
+    inputs_padded = pad_sequence(list(inputs), batch_first=True, padding_value=pad_id)
+    targets_padded = pad_sequence(list(targets), batch_first=True, padding_value=pad_id)
+    return inputs_padded, targets_padded
