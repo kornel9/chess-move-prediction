@@ -13,12 +13,19 @@ from pathlib import Path
 from src.data.pgn_parser import iter_filtered_games
 
 
-def make_smoke_slice(src: Path | str, dst: Path | str, n_games: int) -> int:
+def make_smoke_slice(
+    src: Path | str,
+    dst: Path | str,
+    n_games: int,
+    log_every: int = 5000,
+) -> int:
     """Write the first ``n_games`` filter-passing games from ``src`` to ``dst``.
 
     Returns the number of games actually written (may be less than ``n_games``
     if the source runs out). ``src`` may be ``.pgn`` or ``.pgn.zst``; ``dst``
-    is written as plain UTF-8 ``.pgn``.
+    is written as plain UTF-8 ``.pgn``. Prints a ``kept K/N`` line every
+    ``log_every`` games so long runs in notebooks visibly progress (set to 0
+    to silence).
     """
     dst_path = Path(dst)
     dst_path.parent.mkdir(parents=True, exist_ok=True)
@@ -27,6 +34,8 @@ def make_smoke_slice(src: Path | str, dst: Path | str, n_games: int) -> int:
         for game in iter_filtered_games(Path(src)):
             print(game, file=out, end="\n\n")
             written += 1
+            if log_every and written % log_every == 0:
+                print(f"[smoke] kept {written}/{n_games}", flush=True)
             if written >= n_games:
                 break
     return written

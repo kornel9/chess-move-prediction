@@ -4,6 +4,11 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+# Vocab is a build artifact — built deterministically from the train split.
+# Don't check it in: a stale smoke-run vocab would silently encode real moves
+# to <UNK> when training on a larger corpus.
+data/vocab.json
+
 # Model checkpoints
 checkpoints/*
 !checkpoints/.gitkeep
