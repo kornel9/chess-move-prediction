@@ -14,14 +14,14 @@ Submission: May 10 2026. 40-point rubric.
 - Report and demo: 10%
 
 ## Models we are building (in order)
-1. N-gram baseline (trigram with Katz backoff, absolute discount d=0.5) — pure Python, no ML framework
-2. LSTM on move sequences — PyTorch, 2-layer, hidden 512, embedding 256
-3. Hybrid CNN + LSTM — CNN encodes 8×8×18 board tensor, LSTM encodes move history, outputs are concatenated
+1. ✅ N-gram baseline (trigram with Katz backoff, absolute discount d=0.5) — pure Python, no ML framework
+2. ✅ LSTM on move sequences — PyTorch, 2-layer, hidden 512, embedding 256 (trained on 300k games of Lichess 2017-01; best val_pp 10.62)
+3. Hybrid CNN + LSTM — CNN encodes 8×8×18 board tensor, LSTM encodes move history, outputs are concatenated *(optional; only if time after demo + report)*
 
 ## Data
 - Source: Lichess Open Database (PGN dumps), ~300k games after filtering
 - Filtering: Rapid/Classical time controls (estimated seconds ≥ 480), both players Elo ≥ 1500, 40–240 plies (20–120 full moves), `Termination == "Normal"`
-- Tokenisation: UCI notation, ~1972-token vocabulary (4 specials + ~1968 UCI moves), `data/vocab.json`
+- Tokenisation: UCI notation. Vocabulary is built from the train split (1940 tokens for our 2017-01 slice; theoretical max ~1972). `data/vocab.json` is a gitignored build artifact, regenerated deterministically from the train split + `seed=42`.
 - Special token IDs (locked in): `<PAD>=0`, `<START>=1`, `<END>=2`, `<UNK>=3`
 - Board tensor: 8×8×18 float32 — 12 piece planes (P,N,B,R,Q,K white then black) + 6 metadata planes (1 turn + 4 castling K,Q,k,q + 1 en-passant target). Rank 0 = white's back rank. No tactical channels.
 - Move history: per-ply dataset granularity (one sample per position). History truncated to last 64 plies, left-padded with `<PAD>`, `<START>` prepended before truncation.
@@ -78,7 +78,7 @@ chess-move-prediction/
 
 ## When to step outside this session
 Some work is impractical inside a Claude Code session. Claude flags these explicitly whenever we hit them:
-- **GPU training runs** — full-data LSTM and hybrid training. Use Google Colab, Kaggle, or Lightning AI free-tier T4/L4. CPU training on 300k games is too slow to iterate on.
+- **GPU training runs** — full-data LSTM and hybrid training. Use Google Colab, Kaggle, or Lightning AI free-tier T4/L4. CPU training on 300k games is too slow to iterate on. On Colab Free, save the best-by-val checkpoint *directly to Drive* (`--out` pointing into `/content/drive/MyDrive/...`) — runtime disconnect after sleep is common and Colab's ephemeral disk gets wiped, but Drive persists. Eval is also GPU-bound (per-game LSTM forward pass) and shares the same daily quota.
 - **Hyperparameter sweeps** — run in a notebook with W&B; bring summary metrics back here.
 - **W&B dashboard inspection** — open the run page in a browser; paste the relevant numbers or charts back if you want them interpreted here.
 - **Large PGN dump downloads** — Lichess monthlies are multi-GB. Download outside the session and point the training script at the resulting path.

@@ -18,11 +18,15 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 import chess
+import numpy as np
 import torch
 
+from src.data.board_encoder import encode_board
+from src.data.dataset import DEFAULT_HISTORY_LEN
 from src.data.pgn_parser import iter_games
 from src.data.splits import split_games
 from src.data.vocab import Vocab
+from src.models.hybrid import MoveBoardHybrid
 from src.models.lstm import MoveLSTM
 from src.models.ngram import TrigramKatz
 
@@ -181,6 +185,102 @@ class LSTMPredictor:
         return out
 
 
+class HybridPredictor:
+    """Adapt :class:`MoveBoardHybrid` to the :class:`Predictor` protocol.
+
+    Walks the game ply-by-ply maintaining a live ``chess.Board`` (so the
+    board-encoder gets called once per ply, not O(plies^2) times). All
+    per-position ``(history, board)`` pairs are stacked into one batch and
+    fed through the hybrid in a single forward pass — so per-game cost
+    scales with the number of plies rather than with separate forward
+    passes per position.
+    """
+
+    def __init__(
+        self,
+        model: MoveBoardHybrid,
+        vocab: Vocab,
+        device: torch.device | None = None,
+        history_len: int = DEFAULT_HISTORY_LEN,
+    ) -> None:
+        self.model = model
+        self.vocab = vocab
+        self.device = device or next(model.parameters()).device
+        self.history_len = history_len
+        self._specials = {model.pad_id, model.start_id, model.end_id}
+
+    def score_game(self, moves: list[str], k: int) -> list[PositionScore]:
+        was_training = self.model.training
+        self.model.eval()
+        try:
+            with torch.no_grad():
+                return self._score_game(moves, k)
+        finally:
+            if was_training:
+                self.model.train()
+
+    def _score_game(self, moves: list[str], k: int) -> list[PositionScore]:
+        target_ids = [self.vocab.encode(m) for m in moves]
+        if not target_ids:
+            return []
+
+        pad_id = self.vocab.pad_id
+        start_id = self.vocab.start_id
+        history_len = self.history_len
+
+        # Walk the game once, collecting (history, board) for every ply
+        # before move i is played. ``boards_np`` collects float32 arrays;
+        # we stack at the end so we hit the GPU with one tensor.
+        histories: list[list[int]] = []
+        boards_np: list[np.ndarray] = []
+        legal_per_ply: list[list[int]] = []
+
+        board = chess.Board()
+        history: list[int] = [start_id]
+        for uci in moves:
+            if len(history) >= history_len:
+                h = history[-history_len:]
+            else:
+                h = [pad_id] * (history_len - len(history)) + history
+            histories.append(h)
+            boards_np.append(encode_board(board))
+            legal_per_ply.append(
+                sorted({self.vocab.encode(m.uci()) for m in board.legal_moves})
+            )
+            history.append(self.vocab.encode(uci))
+            board.push_uci(uci)
+
+        h_tensor = torch.tensor(histories, dtype=torch.long, device=self.device)
+        b_tensor = torch.from_numpy(np.stack(boards_np)).to(self.device)
+        logits = self.model(h_tensor, b_tensor)        # (N, V)
+        log_probs = torch.log_softmax(logits, dim=-1).cpu()  # (N, V)
+
+        out: list[PositionScore] = []
+        for ply, target_id in enumerate(target_ids):
+            row = log_probs[ply]
+            target_logprob = float(row[target_id].item())
+
+            candidates = [w for w in legal_per_ply[ply] if w not in self._specials]
+            if candidates:
+                cand = torch.tensor(candidates, dtype=torch.long)
+                cand_scores = row.index_select(0, cand)
+                top = min(k, cand.numel())
+                _, indices = torch.topk(cand_scores, top)
+                topk_ids = [int(cand[i].item()) for i in indices]
+            else:
+                topk_ids = []
+
+            out.append(
+                PositionScore(
+                    ply_index=ply,
+                    target_token_id=target_id,
+                    target_logprob=target_logprob,
+                    topk_token_ids=topk_ids,
+                )
+            )
+        return out
+
+
 @dataclass
 class PhaseMetrics:
     """Aggregated metrics for one phase bucket."""
@@ -303,7 +403,17 @@ def _load_predictor(
         )
         model = MoveLSTM.load(model_path, map_location=dev).to(dev)
         return LSTMPredictor(model, vocab, device=dev)
-    raise ValueError(f"unknown model_type: {model_type!r} (expected 'ngram' or 'lstm')")
+    if model_type == "hybrid":
+        dev = (
+            torch.device(device)
+            if device
+            else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )
+        model = MoveBoardHybrid.load(model_path, map_location=dev).to(dev)
+        return HybridPredictor(model, vocab, device=dev)
+    raise ValueError(
+        f"unknown model_type: {model_type!r} (expected 'ngram', 'lstm', or 'hybrid')"
+    )
 
 
 def main(
@@ -341,7 +451,7 @@ def main(
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Evaluate a chess move-prediction model.")
-    p.add_argument("--model-type", choices=["ngram", "lstm"], required=True)
+    p.add_argument("--model-type", choices=["ngram", "lstm", "hybrid"], required=True)
     p.add_argument("--model", type=Path, required=True, help="Path to the trained model file.")
     p.add_argument("--pgn", type=Path, required=True, help="Path to .pgn or .pgn.zst dump.")
     p.add_argument("--vocab", type=Path, required=True)
