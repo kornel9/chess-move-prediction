@@ -13,9 +13,9 @@ from torch import nn
 class MoveLSTMConfig:
     """Architecture + special-token wiring for :class:`MoveLSTM`.
 
-    The defaults match the spec in ``CLAUDE.md`` (2 layers, hidden 512,
-    embedding 256). ``vocab_size`` and the special-token ids must be supplied
-    by the caller from the project ``Vocab``.
+    The defaults match the project spec (2 layers, hidden 512, embedding
+    256). ``vocab_size`` and the special-token ids must be supplied by the
+    caller from the project ``Vocab``.
     """
 
     vocab_size: int

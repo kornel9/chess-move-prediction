@@ -6,7 +6,7 @@ predictive signal in positions where the move history alone is insufficient
 (empty/short histories, custom positions, endgames). The two branches'
 representations are concatenated and passed through a shared linear head.
 
-Per CLAUDE.md, the input is the per-ply representation defined in
+The input is the per-ply representation defined in
 :class:`src.data.dataset.ChessMoveDataset` (and the streaming counterpart
 :class:`ChessMovePerPlyIterable`): a ``(history_len,)`` ``LongTensor`` of
 token ids (left-padded with ``<PAD>``) plus a ``(18, 8, 8)`` ``FloatTensor``

@@ -1,9 +1,9 @@
 """Extract the first N filter-passing games from a Lichess dump into a smaller PGN.
 
-Used to build the smoke slice required by ``CLAUDE.md`` ("Before each full-data
-training run, do a smoke run on a 5–10k-game slice first"). The output is a
-plain ``.pgn`` that the existing training scripts can re-parse with
-:func:`src.data.pgn_parser.iter_games`.
+Used to build the small "smoke slice" the project runs before every full-data
+training pass (sanity-check the pipeline end-to-end on 5–10 k games before
+committing GPU hours to ~300 k). The output is a plain ``.pgn`` that the
+existing training scripts can re-parse with :func:`src.data.pgn_parser.iter_games`.
 """
 from __future__ import annotations
 

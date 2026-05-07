@@ -3,7 +3,7 @@
 Each model is wrapped in a :class:`Predictor` adapter that exposes one method,
 ``score_game``, returning a per-ply :class:`PositionScore`. The harness then
 aggregates those scores into top-1/3/5 accuracy, per-token perplexity, and a
-phase-wise breakdown (opening / early mid / late mid / endgame) per CLAUDE.md.
+phase-wise breakdown (opening / early mid / late mid / endgame).
 
 Top-K is computed against legal moves only (legal-move masking). Perplexity is
 computed against the model's raw distribution over the full vocab — masking
@@ -31,8 +31,8 @@ from src.models.lstm import MoveLSTM
 from src.models.ngram import TrigramKatz
 
 
-# Ply indices are 0-based. CLAUDE.md gives phase boundaries in full-move
-# numbers; each full move is two plies, so the bounds below are
+# Ply indices are 0-based. The project spec gives phase boundaries in
+# full-move numbers; each full move is two plies, so the bounds below are
 # inclusive-lower / exclusive-upper ply indices.
 PHASES: tuple[tuple[str, int, int], ...] = (
     ("opening", 0, 20),

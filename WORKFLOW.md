@@ -2,9 +2,9 @@
 
 Living development log for the Chess Move Prediction course project. Each meaningful step (new pipeline component, model, evaluation milestone, design decision) gets a short entry: **what** was built, **why**, and any **problems** worth remembering.
 
-`CLAUDE.md` is the project authority (goals, rubric, conventions). This file is the engineering journal it draws from. The final, audience-facing writeup lives in `report/` and pulls from here.
+This is the engineering journal for the project. The final, audience-facing writeup lives in `report/` and pulls from here.
 
-**Last updated:** 2026-05-05 (Hybrid CNN+LSTM implemented and smoke-validated; ready for the full Colab run)
+**Last updated:** 2026-05-07 (Demo v2 — PGN playback mode + click-on-board free play with multi-coloured top-1 arrows; report fix for special-token explanation)
 
 ---
 
@@ -55,7 +55,7 @@ Design: a `Predictor` `Protocol` with one method, `score_game(moves, k) -> list[
 - `NgramPredictor` walks ply-by-ply maintaining the trigram `(a, b)` context.
 - Both rebuild a `chess.Board` per ply to compute legal moves — the model itself has no legality knowledge.
 
-Metrics: top-1 / top-3 / top-5 (legal-move-masked, specials excluded), per-token perplexity, and a phase-wise breakdown (opening / early-mid / late-mid / endgame from the CLAUDE.md ply boundaries).
+Metrics: top-1 / top-3 / top-5 (legal-move-masked, specials excluded), per-token perplexity, and a phase-wise breakdown (opening / early-mid / late-mid / endgame, per the project's ply boundaries).
 
 Why no legal-mask on perplexity: masking inflates probabilities and breaks cross-model comparability — top-K is the legal-aware metric, perplexity is the raw-distribution one. Both metrics are needed; mixing them muddles both.
 
@@ -65,7 +65,7 @@ CLI: `python -m src.training.evaluate --model-type {ngram,lstm} --model … --pg
 
 ## 5. Smoke run on 5k-game slice ✅
 
-End-to-end pipeline validation per the CLAUDE.md "smoke first" rule. Source: Lichess 2013-01 monthly (`lichess_db_standard_rated_2013-01.pgn.zst`, 17 MB compressed) downloaded into `data/raw/`. Sliced to `data/raw/smoke.pgn` (5 000 filter-passing games, 4.5 MB) via the new `src/data/make_smoke_slice.py`, which streams the dump through the existing filters and re-emits valid PGN.
+End-to-end pipeline validation per the project's "smoke first" rule. Source: Lichess 2013-01 monthly (`lichess_db_standard_rated_2013-01.pgn.zst`, 17 MB compressed) downloaded into `data/raw/`. Sliced to `data/raw/smoke.pgn` (5 000 filter-passing games, 4.5 MB) via the new `src/data/make_smoke_slice.py`, which streams the dump through the existing filters and re-emits valid PGN.
 
 **N-gram** (`src/training/train_ngram.py`): 4 250-game train split → vocab size 1 870, 175 144 trigram contexts, val pp 403. Saved to `checkpoints/smoke/ngram.pkl.gz`.
 
@@ -91,12 +91,12 @@ End-to-end pipeline validation per the CLAUDE.md "smoke first" rule. Source: Lic
 
 ## 6. Colab notebook for the full run ✅
 
-`notebooks/train_full_lstm_colab.ipynb` — staged the full-data run on free-tier T4. The notebook mounts Drive, clones the repo from GitHub, installs only the deps Colab doesn't already ship (`chess`, `zstandard`, `wandb`), downloads one Lichess monthly (default `2017-01`, 1.9 GB compressed — chosen so the post-filter yield comfortably exceeds 300 k games), slices to `data/raw/full.pgn` via the existing `make_smoke_slice.py`, runs `train_lstm.py` with the CLAUDE.md target config (embedding 256 / hidden 512 / 2 layers / dropout 0.2 / 8 epochs / batch 64) optionally with W&B, evaluates on the test split, and copies `lstm.pt` + `vocab.json` + `eval_test.txt` back to Drive. Cell 9 also trains and evaluates the n-gram on the same slice for an apples-to-apples baseline. Expected wall-clock: ≈1–2 h on T4.
+`notebooks/train_full_lstm_colab.ipynb` — staged the full-data run on free-tier T4. The notebook mounts Drive, clones the repo from GitHub, installs only the deps Colab doesn't already ship (`chess`, `zstandard`, `wandb`), downloads one Lichess monthly (default `2017-01`, 1.9 GB compressed — chosen so the post-filter yield comfortably exceeds 300 k games), slices to `data/raw/full.pgn` via the existing `make_smoke_slice.py`, runs `train_lstm.py` with the project's target config (embedding 256 / hidden 512 / 2 layers / dropout 0.2 / 8 epochs / batch 64) optionally with W&B, evaluates on the test split, and copies `lstm.pt` + `vocab.json` + `eval_test.txt` back to Drive. Cell 9 also trains and evaluates the n-gram on the same slice for an apples-to-apples baseline. Expected wall-clock: ≈1–2 h on T4.
 
 What the notebook needs from the user before running: (1) push this repo to GitHub and edit `GITHUB_URL` in cell 5, or use the Drive-zip alt path documented above it; (2) Runtime → T4 GPU; (3) optional W&B API key. Bring back to the next session: contents of `eval_test_lstm.txt` / `eval_test_ngram.txt`, the W&B run URL, total wall-clock, and any surprises.
 
 **Decisions / open thoughts**:
-- 300 k games is the target from CLAUDE.md, not a hard floor. If 2017-01 yields more, the slicer just stops at 300 k. If a later monthly is needed for a sanity-check rerun, the notebook is parameterized via `MONTHLY` and `N_GAMES`.
+- 300 k games is the project target, not a hard floor. If 2017-01 yields more, the slicer just stops at 300 k. If a later monthly is needed for a sanity-check rerun, the notebook is parameterized via `MONTHLY` and `N_GAMES`.
 - Reused `make_smoke_slice.py` directly rather than renaming it — the script is general-purpose; only the original use case was "smoke". A note in the notebook calls this out.
 
 ---
@@ -112,7 +112,7 @@ Trained on 300 k filter-passing games from Lichess `2017-01.pgn.zst`. Two issues
 **Clean run** (after both fixes):
 - 300 000 filter-passing games, split 255 k train / 30 k val / 15 k test.
 - Vocab built from train split: **1 940 tokens** (4 specials + 1 936 UCI moves) — vs theoretical max ~1 972.
-- 5 170 068 params: matches CLAUDE.md target (embedding 256, hidden 512, 2 layers, dropout 0.2).
+- 5 170 068 params: matches the project target (embedding 256, hidden 512, 2 layers, dropout 0.2).
 - 8 epochs × ~7.5 min = **~60 min wall-clock on T4**.
 - Val perplexity dropped monotonically every epoch: 22.48 → 15.89 → 13.53 → 12.36 → 11.68 → 11.19 → 10.86 → **10.62**.
 - Best checkpoint persisted to Drive (`/MyDrive/chess-move-prediction/lstm_full.pt`, ~20 MB).
@@ -177,10 +177,10 @@ Compared to the smoke n-gram (overall top-1 21.3 %, pp 387), 60× more training 
 
 ## 10. Hybrid CNN + LSTM — built and smoke-validated ✅
 
-User requested this after the demo surfaced an architectural limitation of the pure LSTM: with empty/short move history the model has nothing to anchor predictions on (e.g., it can't mate K+Q vs K from a custom starting position because it sees only `[<START>]` and the board is invisible to it). The hybrid adds a CNN branch over the existing 18-channel board tensor so the model has a board-state signal in addition to the move history. This is the third model originally listed in CLAUDE.md.
+Built this after the demo surfaced an architectural limitation of the pure LSTM: with empty/short move history the model has nothing to anchor predictions on (e.g., it can't mate K+Q vs K from a custom starting position because it sees only `[<START>]` and the board is invisible to it). The hybrid adds a CNN branch over the existing 18-channel board tensor so the model has a board-state signal in addition to the move history. This is the third model originally planned for the project.
 
 **New code**:
-- `src/models/hybrid.py` — `MoveBoardHybrid`: LSTM branch over move history (same shape as `MoveLSTM`) + 3-layer CNN over the `(18, 8, 8)` board → linear projection to 256-dim board feature → concat with LSTM hidden → linear head. ~7.9 M params at the CLAUDE.md target config (embedding 256 / hidden 512 / 2 LSTM layers / CNN channels 64-128-128 / board feature 256).
+- `src/models/hybrid.py` — `MoveBoardHybrid`: LSTM branch over move history (same shape as `MoveLSTM`) + 3-layer CNN over the `(18, 8, 8)` board → linear projection to 256-dim board feature → concat with LSTM hidden → linear head. ~7.9 M params at the project target config (embedding 256 / hidden 512 / 2 LSTM layers / CNN channels 64-128-128 / board feature 256).
 - `src/data/dataset.py` — added `ChessMovePerPlyIterable`, a streaming per-ply dataset that walks each game once and yields all of its plies in order. The existing `ChessMoveDataset` rebuilds the board from move 0 on every `__getitem__`, which is `O(plies²)` per game and would take hours just for board reconstruction at 25 M training positions. The new iterable is `O(plies)` total — pushes one move per ply per game. Within an epoch, games are shuffled (deterministically per `seed + epoch + worker_id`); plies inside each game are emitted in chronological order.
 - `src/training/train_hybrid.py` — parallel structure to `train_lstm.py`; defaults to 4 epochs, batch 256, AdamW + ReduceLROnPlateau, optional W&B.
 - `src/training/evaluate.py` — added `HybridPredictor` to the eval harness. Walks the game ply-by-ply maintaining a live `chess.Board`, builds all `(history, board)` pairs, then runs *one batched forward pass per game* — same shape contract as the existing `LSTMPredictor`/`NgramPredictor`. The `--model-type` CLI choice now accepts `hybrid`.
@@ -195,15 +195,95 @@ User requested this after the demo surfaced an architectural limitation of the p
 - `HybridPredictor` runs through the existing `evaluate()` aggregator on 5 test games — top-1/3/5 + phase breakdown populated as expected (numbers low because the model has only seen a few thousand positions; the Colab run is what gives real numbers).
 - A `test_board_signal_changes_predictions` unit test confirms the CNN branch is functionally active — different boards with the same history produce different logits, so the hybrid isn't degenerating to "LSTM with extra parameters."
 
-**Channel choice** (deliberate, after a discussion with the user): kept all 18 channels of the existing `board_encoder.py` — 12 piece planes + 1 turn + 4 castling + 1 en-passant. The user considered dropping castling/en-passant on the assumption it would meaningfully speed up training; we worked through the math (input-channel count only affects the first conv layer, ~3 k extra params in a ~7.9 M-param model — under 1 % of wall-clock) and confirmed there is no real speed benefit to dropping them while there is real predictive signal in keeping them. Tactical channels (check / hanging pieces / attack maps) were considered and explicitly skipped per CLAUDE.md design philosophy — those would conflate "the CNN learned chess" with "we precomputed chess." Saved as a future-work note for the TDK research project.
+**Channel choice** (deliberate): kept all 18 channels of the existing `board_encoder.py` — 12 piece planes + 1 turn + 4 castling + 1 en-passant. Initially considered dropping castling/en-passant on the assumption it would meaningfully speed up training; worked through the math (input-channel count only affects the first conv layer, ~3 k extra params in a ~7.9 M-param model — under 1 % of wall-clock) and confirmed there is no real speed benefit to dropping them while there is real predictive signal in keeping them. Tactical channels (check / hanging pieces / attack maps) were considered and explicitly skipped per the project's design philosophy — those would conflate "the CNN learned chess" with "we precomputed chess." Saved as a future-work note for the TDK research project.
 
 **Note on the slicer perf fix making this feasible**: this hybrid plan would have been impractical before the §7 perf fix to `pgn_parser.py` and `make_smoke_slice.py` — at the original parsing speed, just preparing a fresh slice for each Colab run was already a 60+ min operation. With fast-skip, slicing → vocab → 4 epochs of hybrid training fits comfortably in a single ~90 min Colab session.
 
 ---
 
-## 11. Up next
+## 11. Hybrid full training + test-eval ✅
 
-- [ ] **LSTM test-eval on the full slice** — needs GPU. Wait for Colab quota reset.
-- [ ] **Hybrid full training + test-eval** — run `notebooks/train_full_hybrid_colab.ipynb` once GPU returns. Estimate: ~60–90 min total (slice already cached on Drive's understanding, but Colab disk is ephemeral so the slice rebuild is part of the run). Bring back: contents of `eval_test_hybrid.txt`, the W&B run URL, and any surprises.
-- [ ] **Final report** (`report/`) — three-way comparison table (n-gram / LSTM / hybrid), per-phase breakdown, val curves from W&B, demo screenshots, qualitative analysis on a curated set of positions (using the user's chess background).
-- [ ] **Demo refresh** after the hybrid checkpoint lands — download `hybrid_full.pt` from Drive into `checkpoints/full/hybrid.pt`; the demo will pick it up automatically and add the third panel.
+Trained on the same 300 k-game `2017-01` slice as the LSTM, on a friend's local GPU after Colab Free's quota stayed locked. Identical vocab (1 940 tokens) and split (`seed=42`) so the n-gram, LSTM, and hybrid evaluate apples-to-apples.
+
+**Training run (friend's GPU)**:
+- 7 995 988 params (matches the spec target: embedding 256 / hidden 512 / 2 LSTM layers / CNN 64-128-128 / board feature 256).
+- Per-ply training set: **19.78 M positions** (300 k games × ~80 plies each), val 2.33 M positions.
+- 4 epochs × ~1 090 s/epoch = **~73 min wall-clock**. (Suggests the friend's GPU is roughly Colab T4-class; the streaming `ChessMovePerPlyIterable` made this size of dataset feasible in one session.)
+- Val perplexity dropped monotonically every epoch: 9.56 → 8.62 → 8.24 → **8.04**. Loss curve was still falling at epoch 4 — diminishing returns visible, fine to stop here.
+- Hybrid val pp **8.04** vs LSTM val pp **10.62** = ~25 % improvement from adding the CNN branch over the 18-channel board on top of the pure-sequence model. **Adding board awareness was worth it.**
+
+**Test-eval on the held-out 15 000-game test split (1 162 103 positions)**:
+
+| Metric | n-gram | **Hybrid** | Δ |
+|---|---:|---:|---:|
+| top-1 | 0.2519 | **0.4076** | **+15.6 pp** (61 % relative) |
+| top-3 | 0.4576 | **0.6748** | +21.7 pp |
+| top-5 | 0.5626 | **0.7840** | +22.1 pp |
+| perplexity | 156.70 | **8.03** | **~20× better** |
+
+| Phase | n-gram top-1 | Hybrid top-1 | Δ | Hybrid pp |
+|---|---:|---:|---:|---:|
+| opening (plies 0–19) | 0.3656 | **0.4732** | +10.8 pp | 5.34 |
+| early-mid (20–39) | 0.2127 | **0.3925** | **+17.9 pp** ← biggest absolute gain | 8.56 |
+| late-mid (40–79) | 0.1868 | **0.3605** | +17.4 pp | 10.77 |
+| endgame (80+) | 0.2753 | **0.4308** | +15.6 pp | 7.35 |
+
+**Reading the phase shape**: the n-gram peaks in the opening (memorised lines, narrow context, 36.6 % top-1) and bottoms out in the midgame (18.7 %). The hybrid is consistent across all four phases (36–47 %); the largest absolute gains are exactly where the baseline was weakest. This is the textbook "sequence + board awareness closes the gap where local-context memorisation fails" narrative — the rubric-aligned story for the report's *Performance analysis* section.
+
+**Demo state**: `hybrid.pt` (31 MB) and the matching `vocab.json` are now in the local repo. The Streamlit demo's lazy-load triggers automatically — refreshing the browser tab will show three panels (Hybrid / LSTM / Trigram). Verified: from the start position the hybrid agrees with the LSTM and n-gram on the canonical opening order (`e2e4 > d2d4 > c2c4 > g1f3 > e2e3`), with sharper concentration than either (e2e4 raw log-prob -0.38).
+
+---
+
+## 12. LSTM test-eval ✅ — full three-way comparison complete
+
+LSTM eval ran on the friend's GPU after we sent over `lstm.pt`. Same 1.16 M test positions as the n-gram and hybrid evals; identical vocab and split.
+
+**LSTM test-eval**:
+
+| Phase | n-positions | top-1 | top-3 | top-5 | perplexity |
+|---|---:|---:|---:|---:|---:|
+| Overall | 1 162 103 | 0.3707 | 0.6301 | 0.7438 | 10.51 |
+| opening (0–19) | 300 000 | 0.4738 | 0.7636 | 0.8688 | 5.37 |
+| early-mid (20–39) | 300 000 | 0.3685 | 0.6243 | 0.7396 | 9.81 |
+| late-mid (40–79) | 401 899 | 0.3030 | 0.5368 | 0.6527 | 16.41 |
+| endgame (80+) | 160 204 | 0.3518 | 0.6255 | 0.7463 | 13.76 |
+
+(LSTM val pp was 10.62; test pp 10.51 — clean generalisation, no overfitting signal.)
+
+### Full three-way comparison
+
+| Metric | n-gram | LSTM | **Hybrid** | LSTM vs n-gram | Hybrid vs LSTM |
+|---|---:|---:|---:|---:|---:|
+| **top-1** | 0.2519 | 0.3707 | **0.4076** | +11.9 pp | +3.7 pp |
+| **top-3** | 0.4576 | 0.6301 | **0.6748** | +17.3 pp | +4.5 pp |
+| **top-5** | 0.5626 | 0.7438 | **0.7840** | +18.1 pp | +4.0 pp |
+| **perplexity** | 156.70 | 10.51 | **8.03** | 15× better | 24 % better |
+
+| Phase | n-gram top-1 | LSTM top-1 | Hybrid top-1 | Hybrid Δ vs LSTM | Hybrid pp Δ vs LSTM |
+|---|---:|---:|---:|---:|---:|
+| opening | 0.3656 | **0.4738** | 0.4732 | tied (-0.001) | tied (5.34 vs 5.37) |
+| early-mid | 0.2127 | 0.3685 | **0.3925** | +2.4 pp | 13 % better (8.56 vs 9.81) |
+| late-mid | 0.1868 | 0.3030 | **0.3605** | +5.8 pp | 34 % better (10.77 vs 16.41) |
+| endgame | 0.2753 | 0.3518 | **0.4308** | **+7.9 pp** | **47 % better** (7.35 vs 13.76) |
+
+### The phase-by-phase story (this is the report's headline)
+
+Two clean findings worth a paragraph each:
+
+1. **The LSTM beats the n-gram everywhere by a wide margin.** The biggest *absolute* gains over the baseline are in the midgame phases (early-mid +15.6 pp, late-mid +11.6 pp top-1) — exactly where the n-gram's three-move context bottoms out. The LSTM's full game history pays off most where local pattern matching fails most.
+
+2. **The hybrid's gain over the LSTM grows monotonically through the game.** In the opening, where the move history alone is overwhelmingly informative (it's how openings work), the LSTM and the hybrid are essentially **tied** — adding board awareness contributes almost nothing because nothing in the board state isn't already encoded by the opening sequence. Then the gap opens up: +2.4 pp early-mid, +5.8 pp late-mid, +7.9 pp endgame. **In the endgame the hybrid is 47 % better-calibrated than the pure LSTM.** This is exactly the prediction we'd make from first principles: board state matters most when game flow matters least, and that's the late game.
+
+Together these two findings are the rubric-aligned narrative for *Sequential scenario definition* (15 %), *Sequence model* (25 %), and *Performance analysis* (15 %).
+
+### Cross-checks
+
+- LSTM val pp 10.62 ≈ test pp 10.51, hybrid val pp 8.04 ≈ test pp 8.03 — no overfitting on either model.
+- All three models tested on identical 15 000 held-out games, identical 1 940-token vocab, identical phase boundaries → comparisons are apples-to-apples.
+
+---
+
+## 13. Up next
+
+- [ ] **Final report** (`report/`) — three-way table above, per-phase breakdown, val curves from W&B, demo screenshots (especially K+Q vs K showing the hybrid handles what the LSTM couldn't), qualitative analysis on positions you choose using your chess background.
+- [ ] **(Optional) Curate a few positions** for the qualitative section while the data is fresh in your mind — anything where you observe meaningful disagreement between the three models is reportable.

@@ -104,7 +104,7 @@ def _game_id(headers: chess.pgn.Headers, fallback_index: int) -> str:
 def iter_games(path: Path | str) -> Iterator[tuple[str, list[str]]]:
     """Yield ``(game_id, uci_moves)`` tuples for games passing the project filters.
 
-    Filters (per CLAUDE.md):
+    Filters (per the project spec):
         - TimeControl is Rapid or Classical (estimated seconds >= 480).
         - Both ``WhiteElo`` and ``BlackElo`` >= 1500.
         - ``Termination`` tag equals ``"Normal"``.
