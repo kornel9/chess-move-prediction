@@ -1,11 +1,5 @@
 # Chess Next-Move Prediction with N-Gram, LSTM, and Hybrid CNN+LSTM Models
 
-**Author:** Kornel Fodor
-**Course:** Machine Learning, Corvinus University of Budapest
-**Submission date:** 10 May 2026
-
----
-
 ## Abstract
 
 We frame chess next-move prediction as a sequence-modelling task on human play and compare three models trained on 300 000 filtered games from the Lichess Open Database (January 2017): a trigram baseline with Katz back-off, a 2-layer LSTM (5.17 M parameters) over UCI move sequences, and a hybrid CNN+LSTM (8.0 M parameters) that adds an 8×8×18 board-tensor branch to the LSTM. On a held-out 15 000-game test split (1.16 M positions), the hybrid achieves top-1 accuracy 0.408 and perplexity 8.03, versus 0.371 / 10.51 for the LSTM and 0.252 / 156.7 for the baseline. The most informative finding is the phase-by-phase shape: adding board awareness (LSTM → hybrid) yields essentially zero gain in the opening but improves perplexity by 47 % in the endgame — board state matters most precisely where pure-sequence context becomes least informative. All three models support legal-move masking at inference, so they cannot recommend illegal or invented moves.
