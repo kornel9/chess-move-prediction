@@ -80,6 +80,7 @@ python -m streamlit run src/demo/streamlit_app.py
 ```
 
 Open <http://localhost:8501> and pick a mode at the top.
+You can also use this Streamlit link to run it in the browser: https://chess-move-prediction-demo.streamlit.app/
 
 ## Reproducing the results
 
